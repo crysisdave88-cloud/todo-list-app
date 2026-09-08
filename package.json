@@ -1,0 +1,23 @@
+{
+  "name": "todo-list-app",
+  "version": "1.0.0",
+  "description": "A modern to-do list application with local storage functionality",
+  "main": "script.js",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "npx http-server"
+  },
+  "keywords": [
+    "todo",
+    "task-manager",
+    "productivity",
+    "local-storage",
+    "web-app"
+  ],
+  "author": "crysisdave88-cloud",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crysisdave88-cloud/todo-list-app.git"
+  }
+}
