@@ -8,6 +8,28 @@ class TodoApp {
         this.init();
     }
 
+    generateTodoId() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    normalizeTodo(todo, fallbackText = 'Untitled task') {
+        const text = typeof todo?.text === 'string' ? todo.text.trim() : '';
+        const priority = ['low', 'medium', 'high'].includes(todo?.priority) ? todo.priority : 'medium';
+
+        return {
+            id: String(todo?.id ?? this.generateTodoId()),
+            text: text || fallbackText,
+            completed: Boolean(todo?.completed),
+            priority,
+            createdAt: todo?.createdAt || new Date().toLocaleString(),
+            dueDate: todo?.dueDate ?? null
+        };
+    }
+
     init() {
         this.loadFromStorage();
         this.setupEventListeners();
@@ -48,7 +70,7 @@ class TodoApp {
         }
 
         const todo = {
-            id: Date.now(),
+            id: this.generateTodoId(),
             text: text,
             completed: false,
             priority: 'medium',
@@ -65,14 +87,16 @@ class TodoApp {
     }
 
     deleteTodo(id) {
-        this.todos = this.todos.filter(todo => todo.id !== id);
+        const targetId = String(id);
+        this.todos = this.todos.filter(todo => String(todo.id) !== targetId);
         this.saveToStorage();
         this.render();
         this.showToast('Task deleted');
     }
 
     toggleTodo(id) {
-        const todo = this.todos.find(t => t.id === id);
+        const targetId = String(id);
+        const todo = this.todos.find(t => String(t.id) === targetId);
         if (todo) {
             todo.completed = !todo.completed;
             this.saveToStorage();
@@ -134,6 +158,23 @@ class TodoApp {
         this.showToast('Tasks exported successfully!');
     }
 
+    normalizeImportedTodos(importedTodos) {
+        const usedIds = new Set(this.todos.map(todo => String(todo.id)));
+
+        return importedTodos.map((todo, index) => {
+            const normalizedTodo = this.normalizeTodo(todo, `Imported task ${index + 1}`);
+            let nextId = String(normalizedTodo.id);
+
+            while (usedIds.has(nextId)) {
+                nextId = this.generateTodoId();
+            }
+
+            normalizedTodo.id = nextId;
+            usedIds.add(nextId);
+            return normalizedTodo;
+        });
+    }
+
     importTasks(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -148,9 +189,8 @@ class TodoApp {
                     return;
                 }
 
-                // Validate structure
                 const valid = importedTodos.every(todo => 
-                    todo.id && todo.text && typeof todo.completed === 'boolean'
+                    typeof todo === 'object' && todo !== null && typeof todo.completed === 'boolean'
                 );
 
                 if (!valid) {
@@ -163,14 +203,11 @@ class TodoApp {
                 );
 
                 if (mergeChoice) {
-                    // Merge: Add imported tasks that don't already exist
-                    const existingIds = new Set(this.todos.map(t => t.id));
-                    const newTodos = importedTodos.filter(t => !existingIds.has(t.id));
+                    const newTodos = this.normalizeImportedTodos(importedTodos);
                     this.todos.push(...newTodos);
                     this.showToast(`Merged ${newTodos.length} new task(s)`);
                 } else {
-                    // Replace all
-                    this.todos = importedTodos;
+                    this.todos = this.normalizeImportedTodos(importedTodos);
                     this.showToast('Tasks replaced successfully!');
                 }
 
@@ -217,11 +254,11 @@ class TodoApp {
                     type="checkbox" 
                     class="checkbox"
                     ${todo.completed ? 'checked' : ''}
-                    onchange="app.toggleTodo(${todo.id})"
+                    onchange="app.toggleTodo('${String(todo.id).replace(/'/g, "\\'")}')"
                 >
-                <span class="todo-priority ${todo.priority}">${todo.priority.toUpperCase()}</span>
+                <span class="todo-priority ${todo.priority}">${String(todo.priority).toUpperCase()}</span>
                 <span class="todo-text">${this.escapeHtml(todo.text)}</span>
-                <button class="delete-btn" onclick="app.deleteTodo(${todo.id})">Delete</button>
+                <button class="delete-btn" onclick="app.deleteTodo('${String(todo.id).replace(/'/g, "\\'")}')">Delete</button>
             </li>
         `).join('');
     }
@@ -238,7 +275,14 @@ class TodoApp {
     loadFromStorage() {
         try {
             const data = localStorage.getItem(this.storageKey);
-            this.todos = data ? JSON.parse(data) : [];
+            const parsedData = data ? JSON.parse(data) : [];
+
+            if (!Array.isArray(parsedData)) {
+                this.todos = [];
+                return;
+            }
+
+            this.todos = parsedData.map((todo, index) => this.normalizeTodo(todo, `Stored task ${index + 1}`));
         } catch (error) {
             console.error('Error loading from storage:', error);
             this.todos = [];
